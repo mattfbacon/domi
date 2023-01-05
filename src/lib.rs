@@ -45,23 +45,33 @@ pub fn run<F: FnMut(DomBuilder<'_>) + 'static>(root: &HtmlElement, render: F) {
 	run_(root, Box::new(render));
 }
 
+enum DrawMode<'a> {
+	ReactToEvent(&'a Event),
+	BuildDom,
+}
+
 fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_>)>) {
 	let draw = {
 		let root = root.clone();
 		let render = RefCell::new(render);
-		move |event: Option<&Event>, state: &mut State| {
-			let builder = DomBuilder::new(&mut state.current_vdom, event);
+		move |mode: DrawMode<'_>, state: &mut State| {
+			let builder = match mode {
+				DrawMode::ReactToEvent(event) => DomBuilder::new(None, Some(event)),
+				DrawMode::BuildDom => DomBuilder::new(Some(&mut state.current_vdom), None),
+			};
 			(render.borrow_mut())(builder);
 
-			vdom::patch_dom(&root, &state.last_vdom, &state.current_vdom);
+			if let DrawMode::BuildDom = mode {
+				vdom::patch_dom(&root, &state.last_vdom, &state.current_vdom);
 
-			std::mem::swap(&mut state.last_vdom, &mut state.current_vdom);
-			state.current_vdom.clear();
+				std::mem::swap(&mut state.last_vdom, &mut state.current_vdom);
+				state.current_vdom.clear();
+			}
 		}
 	};
 
 	let mut state = State::default();
-	draw(None, &mut state);
+	draw(DrawMode::BuildDom, &mut state);
 
 	let state = Rc::new(RefCell::new(state));
 	let draw = {
@@ -69,9 +79,9 @@ fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_>)>) {
 		move |event: web_sys::Event| {
 			if let Some(event) = Event::from_dom(&event) {
 				let mut state = state.borrow_mut();
-				draw(Some(&event), &mut state);
+				draw(DrawMode::ReactToEvent(&event), &mut state);
 				// show any view changes due to events handled in the previous `draw` call
-				draw(None, &mut state);
+				draw(DrawMode::BuildDom, &mut state);
 			}
 		}
 	};

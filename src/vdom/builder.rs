@@ -6,41 +6,65 @@ use std::hash::Hash;
 use crate::event::{Event, EventKind, Id};
 use crate::vdom::{VNode, VNodeElement};
 
+enum ElementOrId<'a> {
+	Element(&'a mut VNodeElement),
+	Id(Id),
+}
+
+impl ElementOrId<'_> {
+	fn as_element(&mut self) -> Option<&mut VNodeElement> {
+		match self {
+			Self::Element(element) => Some(element),
+			Self::Id(..) => None,
+		}
+	}
+
+	fn id(&self) -> Id {
+		match self {
+			Self::Element(element) => element.id,
+			Self::Id(id) => *id,
+		}
+	}
+}
+
 pub struct ElementBuilder<'a> {
-	vdom: &'a mut VNodeElement,
+	vdom: ElementOrId<'a>,
 	event: Option<&'a Event>,
 }
 
 impl ElementBuilder<'_> {
-	pub fn attr(self, attr: impl Into<String>, value: impl Into<String>) -> Self {
-		self.vdom.attributes.insert(attr.into(), value.into());
+	pub fn attr(mut self, attr: impl Into<String>, value: impl Into<String>) -> Self {
+		if let Some(vdom) = self.vdom.as_element() {
+			vdom.attributes.insert(attr.into(), value.into());
+		}
 		self
 	}
 
 	pub fn children(&mut self) -> DomBuilder<'_> {
 		DomBuilder {
-			vdom: &mut self.vdom.children,
+			parent_id: Some(self.vdom.id()),
+			vdom: self.vdom.as_element().map(|element| &mut element.children),
 			event: self.event,
-			parent_id: Some(self.vdom.id),
 		}
 	}
 
 	pub fn clicked(&self) -> bool {
 		self
 			.event
-			.filter(|event| event.target == self.vdom.id && event.kind == EventKind::Click)
+			.filter(|event| event.target == self.vdom.id() && event.kind == EventKind::Click)
 			.is_some()
 	}
 }
 
 pub struct DomBuilder<'a> {
-	vdom: &'a mut Vec<VNode>,
-	event: Option<&'a Event>,
 	parent_id: Option<Id>,
+	vdom: Option<&'a mut Vec<VNode>>,
+	event: Option<&'a Event>,
 }
 
 impl<'a> DomBuilder<'a> {
-	pub(crate) fn new(vdom: &'a mut Vec<VNode>, event: Option<&'a Event>) -> Self {
+	/// If `None` is provided for `vdom`, then don't actually build a DOM, but still process events.
+	pub(crate) fn new(vdom: Option<&'a mut Vec<VNode>>, event: Option<&'a Event>) -> Self {
 		Self {
 			vdom,
 			event,
@@ -49,21 +73,30 @@ impl<'a> DomBuilder<'a> {
 	}
 
 	pub fn text(&mut self, text: impl Into<String>) {
-		self.vdom.push(VNode::Text(text.into()));
+		if let Some(vdom) = &mut self.vdom {
+			vdom.push(VNode::Text(text.into()));
+		}
 	}
 
 	fn element_(&mut self, id: Id, tag: String) -> ElementBuilder<'_> {
-		let idx = self.vdom.len();
-		self.vdom.push(VNode::Element(VNodeElement {
-			id,
-			tag,
-			attributes: HashMap::new(),
-			children: Vec::new(),
-		}));
-		let VNode::Element(element) = &mut self.vdom[idx] else { unreachable!() };
-		ElementBuilder {
-			vdom: element,
-			event: self.event,
+		if let Some(vdom) = &mut self.vdom {
+			let idx = vdom.len();
+			vdom.push(VNode::Element(VNodeElement {
+				id,
+				tag,
+				attributes: HashMap::new(),
+				children: Vec::new(),
+			}));
+			let VNode::Element(element) = &mut vdom[idx] else { unreachable!() };
+			ElementBuilder {
+				vdom: ElementOrId::Element(element),
+				event: self.event,
+			}
+		} else {
+			ElementBuilder {
+				vdom: ElementOrId::Id(id),
+				event: self.event,
+			}
 		}
 	}
 
