@@ -22,3 +22,6 @@ features = [
 	"DomStringMap",
 ]
 version = "0.3"
+
+[workspace]
+members = [".", "examples/counter"]

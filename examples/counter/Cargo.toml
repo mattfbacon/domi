@@ -1,11 +1,11 @@
 [package]
 edition = "2021"
-name = "domi-tests"
+name = "counter"
 version = "0.1.0"
 
 [dependencies]
 console_error_panic_hook = "0.1"
-domi = { path = ".." }
+domi = { path = "../.." }
 wasm-bindgen = "0.2"
 
 [dependencies.web-sys]
