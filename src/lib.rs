@@ -60,7 +60,7 @@ impl Inner {
 		}
 	}
 
-	fn draw(&mut self, mode: DrawMode<'_>, backing: &State) {
+	fn draw(&mut self, mode: DrawMode<'_>, backing: &Context) {
 		let builder = match mode {
 			DrawMode::ReactToEvent(event) => DomBuilder::new(None, Some(event), backing),
 			DrawMode::BuildDom => DomBuilder::new(Some(&mut self.current_vdom), None, backing),
@@ -77,15 +77,15 @@ impl Inner {
 }
 
 #[derive(Clone)]
-struct State(Rc<RefCell<Inner>>);
+pub struct Context(Rc<RefCell<Inner>>);
 
-impl State {
+impl Context {
 	fn new(root: &HtmlElement, render: RenderCallback) -> Self {
 		let ret = Self(Rc::new(RefCell::new(Inner::new(root.clone(), render))));
 
 		let event_handler = {
-			let state = ret.clone();
-			move |event| state.js_event_handler(&event)
+			let context = ret.clone();
+			move |event| context.js_event_handler(&event)
 		};
 		let event_handler = Closure::<dyn Fn(web_sys::Event)>::new(event_handler);
 		let event_handler_js = event_handler.as_ref().unchecked_ref();
@@ -116,6 +116,10 @@ impl State {
 			self.build_dom();
 		}
 	}
+
+	pub fn request_update(&self) {
+		self.build_dom();
+	}
 }
 
 /// This function returns after setting up the app, rather than blocking while running the UI.
@@ -125,6 +129,6 @@ pub fn run<F: FnMut(DomBuilder<'_>) + 'static>(root: &HtmlElement, render: F) {
 }
 
 fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_>)>) {
-	let state = State::new(root, render);
-	state.build_dom();
+	let context = Context::new(root, render);
+	context.build_dom();
 }

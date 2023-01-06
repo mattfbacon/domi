@@ -5,12 +5,12 @@ use std::hash::Hash;
 
 use crate::event::{Event, EventKind, Id};
 use crate::vdom::{VNode, VNodeElement};
-use crate::State;
+use crate::Context;
 
 #[derive(Clone, Copy)]
 struct Shared<'a> {
 	event: Option<&'a Event>,
-	state: &'a State,
+	context: &'a Context,
 }
 
 enum ElementOrId<'a> {
@@ -75,12 +75,12 @@ impl<'a> DomBuilder<'a> {
 	pub(crate) fn new(
 		vdom: Option<&'a mut Vec<VNode>>,
 		event: Option<&'a Event>,
-		state: &'a State,
+		context: &'a Context,
 	) -> Self {
 		Self {
 			parent_id: None,
 			vdom,
-			shared: Shared { event, state },
+			shared: Shared { event, context },
 		}
 	}
 
@@ -120,11 +120,9 @@ impl<'a> DomBuilder<'a> {
 		)
 	}
 
-	/// Returns a closure that, when called, redraws the app.
-	///
-	/// Do not call this closure within the render closure.
-	pub fn updater(&self) -> impl Fn() + Clone {
-		let state = self.shared.state.clone();
-		move || state.build_dom()
+	#[inline]
+	#[must_use]
+	pub fn context(&self) -> Context {
+		self.shared.context.clone()
 	}
 }
