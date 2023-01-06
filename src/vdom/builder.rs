@@ -5,6 +5,13 @@ use std::hash::Hash;
 
 use crate::event::{Event, EventKind, Id};
 use crate::vdom::{VNode, VNodeElement};
+use crate::State;
+
+#[derive(Clone, Copy)]
+struct Shared<'a> {
+	event: Option<&'a Event>,
+	state: &'a State,
+}
 
 enum ElementOrId<'a> {
 	Element(&'a mut VNodeElement),
@@ -29,7 +36,7 @@ impl ElementOrId<'_> {
 
 pub struct ElementBuilder<'a> {
 	vdom: ElementOrId<'a>,
-	event: Option<&'a Event>,
+	shared: Shared<'a>,
 }
 
 impl ElementBuilder<'_> {
@@ -44,12 +51,13 @@ impl ElementBuilder<'_> {
 		DomBuilder {
 			parent_id: Some(self.vdom.id()),
 			vdom: self.vdom.as_element().map(|element| &mut element.children),
-			event: self.event,
+			shared: self.shared,
 		}
 	}
 
 	pub fn clicked(&self) -> bool {
 		self
+			.shared
 			.event
 			.filter(|event| event.target == self.vdom.id() && event.kind == EventKind::Click)
 			.is_some()
@@ -59,16 +67,20 @@ impl ElementBuilder<'_> {
 pub struct DomBuilder<'a> {
 	parent_id: Option<Id>,
 	vdom: Option<&'a mut Vec<VNode>>,
-	event: Option<&'a Event>,
+	shared: Shared<'a>,
 }
 
 impl<'a> DomBuilder<'a> {
 	/// If `None` is provided for `vdom`, then don't actually build a DOM, but still process events.
-	pub(crate) fn new(vdom: Option<&'a mut Vec<VNode>>, event: Option<&'a Event>) -> Self {
+	pub(crate) fn new(
+		vdom: Option<&'a mut Vec<VNode>>,
+		event: Option<&'a Event>,
+		state: &'a State,
+	) -> Self {
 		Self {
-			vdom,
-			event,
 			parent_id: None,
+			vdom,
+			shared: Shared { event, state },
 		}
 	}
 
@@ -79,7 +91,7 @@ impl<'a> DomBuilder<'a> {
 	}
 
 	fn element_(&mut self, id: Id, tag: String) -> ElementBuilder<'_> {
-		if let Some(vdom) = &mut self.vdom {
+		let inner = if let Some(vdom) = &mut self.vdom {
 			let idx = vdom.len();
 			vdom.push(VNode::Element(VNodeElement {
 				id,
@@ -88,15 +100,13 @@ impl<'a> DomBuilder<'a> {
 				children: Vec::new(),
 			}));
 			let VNode::Element(element) = &mut vdom[idx] else { unreachable!() };
-			ElementBuilder {
-				vdom: ElementOrId::Element(element),
-				event: self.event,
-			}
+			ElementOrId::Element(element)
 		} else {
-			ElementBuilder {
-				vdom: ElementOrId::Id(id),
-				event: self.event,
-			}
+			ElementOrId::Id(id)
+		};
+		ElementBuilder {
+			vdom: inner,
+			shared: self.shared,
 		}
 	}
 
@@ -108,6 +118,14 @@ impl<'a> DomBuilder<'a> {
 				.map_or_else(|| Id::new(&id), |parent_id| parent_id.with(&id)),
 			tag.into(),
 		)
+	}
+
+	/// Returns a closure that, when called, redraws the app.
+	///
+	/// Do not call this closure within the render closure.
+	pub fn updater(&self) -> impl Fn() + Clone {
+		let state = self.shared.state.clone();
+		move || state.build_dom()
 	}
 }
 

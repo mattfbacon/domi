@@ -31,12 +31,91 @@ pub use self::vdom::DomBuilder;
 mod event;
 mod vdom;
 
-#[derive(Default)]
-struct State {
+type RenderCallback = Box<dyn FnMut(DomBuilder<'_>)>;
+
+struct Inner {
 	// held only for ownership; never used
-	draw_closure: Option<Closure<dyn Fn(web_sys::Event)>>,
+	event_handler: Option<Closure<dyn Fn(web_sys::Event)>>,
 	last_vdom: Vec<vdom::VNode>,
 	current_vdom: Vec<vdom::VNode>,
+
+	root: HtmlElement,
+	render: RenderCallback,
+}
+
+#[derive(Clone, Copy)]
+enum DrawMode<'a> {
+	ReactToEvent(&'a Event),
+	BuildDom,
+}
+
+impl Inner {
+	fn new(root: HtmlElement, render: RenderCallback) -> Self {
+		Self {
+			event_handler: None,
+			last_vdom: Vec::new(),
+			current_vdom: Vec::new(),
+			root,
+			render,
+		}
+	}
+
+	fn draw(&mut self, mode: DrawMode<'_>, backing: &State) {
+		let builder = match mode {
+			DrawMode::ReactToEvent(event) => DomBuilder::new(None, Some(event), backing),
+			DrawMode::BuildDom => DomBuilder::new(Some(&mut self.current_vdom), None, backing),
+		};
+		(self.render)(builder);
+
+		if let DrawMode::BuildDom = mode {
+			vdom::patch_dom(&self.root, &self.last_vdom, &self.current_vdom);
+
+			std::mem::swap(&mut self.last_vdom, &mut self.current_vdom);
+			self.current_vdom.clear();
+		}
+	}
+}
+
+#[derive(Clone)]
+struct State(Rc<RefCell<Inner>>);
+
+impl State {
+	fn new(root: &HtmlElement, render: RenderCallback) -> Self {
+		let ret = Self(Rc::new(RefCell::new(Inner::new(root.clone(), render))));
+
+		let event_handler = {
+			let state = ret.clone();
+			move |event| state.js_event_handler(&event)
+		};
+		let event_handler = Closure::<dyn Fn(web_sys::Event)>::new(event_handler);
+		let event_handler_js = event_handler.as_ref().unchecked_ref();
+		root
+			.add_event_listener_with_callback("click", event_handler_js)
+			.unwrap();
+		ret.0.borrow_mut().event_handler = Some(event_handler);
+
+		ret
+	}
+
+	fn draw(&self, mode: DrawMode<'_>) {
+		self.0.borrow_mut().draw(mode, self);
+	}
+
+	fn react_to_event(&self, event: &Event) {
+		self.draw(DrawMode::ReactToEvent(event));
+	}
+
+	fn build_dom(&self) {
+		self.draw(DrawMode::BuildDom);
+	}
+
+	fn js_event_handler(&self, event: &web_sys::Event) {
+		if let Some(event) = Event::from_dom(event) {
+			self.react_to_event(&event);
+			// show any view changes due to events handled in the previous `draw` call
+			self.build_dom();
+		}
+	}
 }
 
 /// This function returns after setting up the app, rather than blocking while running the UI.
@@ -45,51 +124,7 @@ pub fn run<F: FnMut(DomBuilder<'_>) + 'static>(root: &HtmlElement, render: F) {
 	run_(root, Box::new(render));
 }
 
-enum DrawMode<'a> {
-	ReactToEvent(&'a Event),
-	BuildDom,
-}
-
 fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_>)>) {
-	let draw = {
-		let root = root.clone();
-		let render = RefCell::new(render);
-		move |mode: DrawMode<'_>, state: &mut State| {
-			let builder = match mode {
-				DrawMode::ReactToEvent(event) => DomBuilder::new(None, Some(event)),
-				DrawMode::BuildDom => DomBuilder::new(Some(&mut state.current_vdom), None),
-			};
-			(render.borrow_mut())(builder);
-
-			if let DrawMode::BuildDom = mode {
-				vdom::patch_dom(&root, &state.last_vdom, &state.current_vdom);
-
-				std::mem::swap(&mut state.last_vdom, &mut state.current_vdom);
-				state.current_vdom.clear();
-			}
-		}
-	};
-
-	let mut state = State::default();
-	draw(DrawMode::BuildDom, &mut state);
-
-	let state = Rc::new(RefCell::new(state));
-	let draw = {
-		let state = Rc::clone(&state);
-		move |event: web_sys::Event| {
-			if let Some(event) = Event::from_dom(&event) {
-				let mut state = state.borrow_mut();
-				draw(DrawMode::ReactToEvent(&event), &mut state);
-				// show any view changes due to events handled in the previous `draw` call
-				draw(DrawMode::BuildDom, &mut state);
-			}
-		}
-	};
-
-	let draw_closure = Closure::<dyn Fn(web_sys::Event)>::new(draw);
-	let draw_closure_js = draw_closure.as_ref().unchecked_ref();
-	root
-		.add_event_listener_with_callback("click", draw_closure_js)
-		.unwrap();
-	state.borrow_mut().draw_closure = Some(draw_closure);
+	let state = State::new(root, render);
+	state.build_dom();
 }
