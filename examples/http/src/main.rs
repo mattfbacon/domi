@@ -18,11 +18,10 @@
 #![allow(clippy::let_underscore_drop)]
 #![forbid(unsafe_code)]
 
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
-
+use domi::promise::Promise;
+use domi::Context;
 use wasm_bindgen::{JsCast as _, JsValue};
-use wasm_bindgen_futures::{spawn_local, JsFuture};
+use wasm_bindgen_futures::JsFuture;
 
 /// Replace this with any URL that accepts GET requests and returns text. Make sure they support CORS.
 const API_URL: &str = "https://uselessfacts.jsph.pl/random.txt?language=en";
@@ -31,29 +30,29 @@ type Response = Result<String, String>;
 
 enum State {
 	Initial,
-	Loading(Rc<RefCell<Option<Response>>>),
+	Loading(Promise<Response>),
 	Done(Response),
 }
 
 impl State {
-	fn make_request(&mut self, updater: impl FnOnce() + 'static) {
-		let response_place = Rc::new(RefCell::new(None));
-		spawn_local(make_request(Rc::downgrade(&response_place), updater));
-		*self = State::Loading(response_place);
+	fn make_request(&mut self, context: Context) {
+		*self = Self::Loading(Promise::spawn_async(make_request(), context));
 	}
 }
 
-async fn make_request(response_place: Weak<RefCell<Option<Response>>>, updater: impl FnOnce()) {
+async fn make_request() -> Response {
 	async fn helper() -> Result<String, JsValue> {
-		let fetch_future: JsFuture = web_sys::window().unwrap().fetch_with_str(API_URL).into();
-		let response = fetch_future.await?;
+		let window = web_sys::window().unwrap();
 
-		let response: web_sys::Response = response.dyn_into().unwrap();
+		let response: web_sys::Response = JsFuture::from(window.fetch_with_str(API_URL))
+			.await?
+			.dyn_into()
+			.unwrap();
 		if !response.ok() {
 			return Err(format!("bad response status: {}", response.status_text()).into());
 		}
-		let body_future: JsFuture = response.text().unwrap().into();
-		let body: String = body_future
+
+		let body: String = JsFuture::from(response.text().unwrap())
 			.await?
 			.dyn_into::<js_sys::JsString>()
 			.unwrap()
@@ -62,17 +61,13 @@ async fn make_request(response_place: Weak<RefCell<Option<Response>>>, updater: 
 		Ok(body)
 	}
 
-	let res = helper().await;
-	if let Some(response_place) = response_place.upgrade() {
-		*response_place.borrow_mut() = Some(res.map_err(|error| {
-			error
-				.dyn_into::<js_sys::Object>()
-				.unwrap()
-				.to_string()
-				.into()
-		}));
-		updater();
-	}
+	helper().await.map_err(|error| {
+		error
+			.dyn_into::<js_sys::Object>()
+			.unwrap()
+			.to_string()
+			.into()
+	})
 }
 
 fn main() {
@@ -87,12 +82,8 @@ fn main() {
 
 	let mut state = State::Initial;
 	domi::run(root.dyn_ref().unwrap(), move |mut ui| {
-		if let State::Loading(response_place) = &state {
-			let response = {
-				let mut response_place = response_place.borrow_mut();
-				response_place.take()
-			};
-			if let Some(response) = response {
+		if let State::Loading(response_promise) = &mut state {
+			if let Some(response) = response_promise.try_take_by_ref() {
 				state = State::Done(response);
 			}
 		}
@@ -100,12 +91,13 @@ fn main() {
 		ui.element("header", "h1")
 			.children()
 			.text("HTTP request example");
+
 		match &state {
 			State::Initial => {
 				let mut button = ui.element("make-req", "button");
 				button.children().text("Make request");
 				if button.clicked() {
-					state.make_request(ui.updater());
+					state.make_request(ui.context());
 				}
 			}
 			State::Loading(..) => {
@@ -121,7 +113,7 @@ fn main() {
 				let mut again_button = ui.element("again", "button");
 				again_button.children().text("Again!");
 				if again_button.clicked() {
-					state.make_request(ui.updater());
+					state.make_request(ui.context());
 				}
 			}
 		}
