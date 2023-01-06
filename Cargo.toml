@@ -24,4 +24,4 @@ features = [
 version = "0.3"
 
 [workspace]
-members = [".", "examples/counter"]
+members = [".", "examples/counter", "examples/http"]
