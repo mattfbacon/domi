@@ -21,7 +21,7 @@ impl Id {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum EventKind {
 	Click,
 }
@@ -35,7 +35,7 @@ impl EventKind {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Event {
 	pub(crate) target: Id,
 	pub(crate) kind: EventKind,
