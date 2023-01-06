@@ -38,8 +38,8 @@ type RenderCallback = Box<dyn FnMut(DomBuilder<'_>)>;
 struct Inner {
 	// held only for ownership; never used
 	event_handler: Option<Closure<dyn Fn(web_sys::Event)>>,
-	last_vdom: Vec<vdom::VNode>,
-	current_vdom: Vec<vdom::VNode>,
+	last_vdom: vdom::VNodes,
+	current_vdom: vdom::VNodes,
 
 	root: HtmlElement,
 	render: RenderCallback,
@@ -55,8 +55,8 @@ impl Inner {
 	fn new(root: HtmlElement, render: RenderCallback) -> Self {
 		Self {
 			event_handler: None,
-			last_vdom: Vec::new(),
-			current_vdom: Vec::new(),
+			last_vdom: vdom::VNodes::new(),
+			current_vdom: vdom::VNodes::new(),
 			root,
 			render,
 		}
@@ -70,7 +70,7 @@ impl Inner {
 		(self.render)(builder);
 
 		if let DrawMode::BuildDom = mode {
-			vdom::patch_dom(&self.root, &self.last_vdom, &self.current_vdom);
+			vdom::patch(&self.root, &self.last_vdom, &self.current_vdom);
 
 			std::mem::swap(&mut self.last_vdom, &mut self.current_vdom);
 			self.current_vdom.clear();

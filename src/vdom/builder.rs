@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use super::VNodes;
 use crate::event::{Event, EventKind, Id};
 use crate::vdom::{VNode, VNodeElement};
 use crate::Context;
@@ -66,14 +67,14 @@ impl ElementBuilder<'_> {
 
 pub struct DomBuilder<'a> {
 	parent_id: Option<Id>,
-	vdom: Option<&'a mut Vec<VNode>>,
+	vdom: Option<&'a mut VNodes>,
 	shared: Shared<'a>,
 }
 
 impl<'a> DomBuilder<'a> {
 	/// If `None` is provided for `vdom`, then don't actually build a DOM, but still process events.
 	pub(crate) fn new(
-		vdom: Option<&'a mut Vec<VNode>>,
+		vdom: Option<&'a mut VNodes>,
 		event: Option<&'a Event>,
 		context: &'a Context,
 	) -> Self {
@@ -86,20 +87,20 @@ impl<'a> DomBuilder<'a> {
 
 	pub fn text(&mut self, text: impl Into<String>) {
 		if let Some(vdom) = &mut self.vdom {
-			vdom.push(VNode::Text(text.into()));
+			vdom.0.push(VNode::Text(text.into()));
 		}
 	}
 
 	fn element_(&mut self, id: Id, tag: String) -> ElementBuilder<'_> {
 		let inner = if let Some(vdom) = &mut self.vdom {
-			let idx = vdom.len();
-			vdom.push(VNode::Element(VNodeElement {
+			let idx = vdom.0.len();
+			vdom.0.push(VNode::Element(VNodeElement {
 				id,
 				tag,
 				attributes: HashMap::new(),
-				children: Vec::new(),
+				children: VNodes::new(),
 			}));
-			let VNode::Element(element) = &mut vdom[idx] else { unreachable!() };
+			let VNode::Element(element) = &mut vdom.0[idx] else { unreachable!() };
 			ElementOrId::Element(element)
 		} else {
 			ElementOrId::Id(id)
