@@ -16,7 +16,7 @@
 )]
 #![warn(clippy::pedantic)]
 #![allow(clippy::let_underscore_drop)]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -33,13 +33,25 @@ mod event;
 pub mod promise;
 mod vdom;
 
-type RenderCallback = Box<dyn FnMut(DomBuilder<'_>)>;
+type RenderCallback = Box<dyn FnMut(DomBuilder<'_, '_>)>;
+
+#[derive(Default)]
+struct VDoms {
+	last: vdom::VNodes,
+	current: vdom::VNodes,
+}
+
+impl VDoms {
+	fn advance(&mut self) {
+		std::mem::swap(&mut self.last, &mut self.current);
+		self.current.clear();
+	}
+}
 
 struct Inner {
 	// held only for ownership; never used
 	event_handler: Option<Closure<dyn Fn(web_sys::Event)>>,
-	last_vdom: vdom::VNodes,
-	current_vdom: vdom::VNodes,
+	vdoms: VDoms,
 
 	root: HtmlElement,
 	render: RenderCallback,
@@ -55,25 +67,29 @@ impl Inner {
 	fn new(root: HtmlElement, render: RenderCallback) -> Self {
 		Self {
 			event_handler: None,
-			last_vdom: vdom::VNodes::new(),
-			current_vdom: vdom::VNodes::new(),
+			vdoms: VDoms::default(),
 			root,
 			render,
 		}
 	}
 
 	fn draw(&mut self, mode: DrawMode<'_>, backing: &Context) {
-		let builder = match mode {
-			DrawMode::ReactToEvent(event) => DomBuilder::new(None, Some(event), backing),
-			DrawMode::BuildDom => DomBuilder::new(Some(&mut self.current_vdom), None, backing),
-		};
-		(self.render)(builder);
+		self.vdoms.current.with_children_mut(|current_vdom| {
+			let builder = match mode {
+				DrawMode::ReactToEvent(event) => DomBuilder::new(None, Some(event), backing),
+				DrawMode::BuildDom => DomBuilder::new(Some(current_vdom), None, backing),
+			};
+			(self.render)(builder);
+		});
 
 		if let DrawMode::BuildDom = mode {
-			vdom::patch(&self.root, &self.last_vdom, &self.current_vdom);
+			vdom::patch(
+				&self.root,
+				self.vdoms.last.children(),
+				self.vdoms.current.children(),
+			);
 
-			std::mem::swap(&mut self.last_vdom, &mut self.current_vdom);
-			self.current_vdom.clear();
+			self.vdoms.advance();
 		}
 	}
 }
@@ -126,11 +142,11 @@ impl Context {
 
 /// This function returns after setting up the app, rather than blocking while running the UI.
 /// Subsequent updates occur through DOM event handlers.
-pub fn run<F: FnMut(DomBuilder<'_>) + 'static>(root: &HtmlElement, render: F) {
+pub fn run<F: FnMut(DomBuilder<'_, '_>) + 'static>(root: &HtmlElement, render: F) {
 	run_(root, Box::new(render));
 }
 
-fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_>)>) {
+fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_, '_>)>) {
 	let context = Context::new(root, render);
 	context.build_dom();
 }

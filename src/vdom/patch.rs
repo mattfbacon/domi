@@ -3,13 +3,13 @@ use std::cmp::Ordering;
 use wasm_bindgen::JsCast as _;
 use web_sys::Node;
 
-use super::{VNode, VNodes};
+use super::VNode;
 use crate::event::ID_DATA_KEY;
 
 /// Something is wrong in the DOM, probably due to tampering. It must be rebuilt entirely.
 struct MustRegenerate;
 
-fn patch_fallible(dom: &Node, old: &[VNode], new: &[VNode]) -> Result<(), MustRegenerate> {
+fn patch_fallible(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) -> Result<(), MustRegenerate> {
 	let dom_children = dom.child_nodes();
 
 	for (i, (old, new)) in old.iter().zip(new.iter()).enumerate() {
@@ -49,7 +49,7 @@ fn patch_fallible(dom: &Node, old: &[VNode], new: &[VNode]) -> Result<(), MustRe
 					dom_child.set_attribute(added_or_modified, value).unwrap();
 				}
 
-				patch_fallible(&dom_child, &old.children.0, &new.children.0)?;
+				patch_fallible(&dom_child, &old.children, &new.children)?;
 			}
 			(_, new) => {
 				let dom_child = dom_children.item(i).ok_or(MustRegenerate)?;
@@ -78,14 +78,14 @@ fn patch_fallible(dom: &Node, old: &[VNode], new: &[VNode]) -> Result<(), MustRe
 	Ok(())
 }
 
-pub fn patch(dom: &Node, old: &VNodes, new: &VNodes) {
-	match patch_fallible(dom, &old.0, &new.0) {
+pub fn patch(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) {
+	match patch_fallible(dom, old, new) {
 		Ok(()) => (),
 		Err(MustRegenerate) => {
 			while let Some(dom_child) = dom.first_child() {
 				dom.remove_child(&dom_child).unwrap();
 			}
-			for node in &new.0 {
+			for node in new {
 				dom.append_child(&node.to_dom()).unwrap();
 			}
 		}
