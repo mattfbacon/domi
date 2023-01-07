@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #![deny(
 	absolute_paths_not_starting_with_crate,
 	future_incompatible,
@@ -6,6 +7,7 @@
 	meta_variable_misuse,
 	missing_abi,
 	missing_copy_implementations,
+	missing_docs,
 	non_ascii_idents,
 	nonstandard_style,
 	noop_method_call,
@@ -26,7 +28,7 @@ use wasm_bindgen::JsCast as _;
 use web_sys::HtmlElement;
 
 use self::event::Event;
-pub use self::vdom::DomBuilder;
+pub use self::vdom::{DomBuilder, ElementBuilder};
 
 mod event;
 #[cfg(feature = "promise")]
@@ -94,25 +96,52 @@ impl Inner {
 	}
 }
 
+/// Your handle to `domi`.
+///
+/// Allows you to control the execution of the app.
 #[derive(Clone)]
 pub struct Context(Rc<RefCell<Inner>>);
 
 impl Context {
-	fn new(root: &HtmlElement, render: RenderCallback) -> Self {
-		let ret = Self(Rc::new(RefCell::new(Inner::new(root.clone(), render))));
+	fn new(root: HtmlElement, render: RenderCallback) -> Self {
+		let ret = Self(Rc::new(RefCell::new(Inner::new(root, render))));
+		ret.register_js_event_handlers();
+		ret
+	}
 
+	fn register_js_event_handlers(&self) {
 		let event_handler = {
-			let context = ret.clone();
+			let context = self.clone();
 			move |event| context.js_event_handler(&event)
 		};
 		let event_handler = Closure::<dyn Fn(web_sys::Event)>::new(event_handler);
-		let event_handler_js = event_handler.as_ref().unchecked_ref();
-		root
+		let event_handler_js = event_handler.as_ref().unchecked_ref::<js_sys::Function>();
+
+		let mut inner = self.0.borrow_mut();
+		inner
+			.root
 			.add_event_listener_with_callback("click", event_handler_js)
 			.unwrap();
-		ret.0.borrow_mut().event_handler = Some(event_handler);
+		let replaced = inner.event_handler.replace(event_handler);
+		debug_assert!(
+			replaced.is_none(),
+			"an event handler was already registered"
+		);
+	}
 
-		ret
+	fn unregister_js_event_handlers(&self) {
+		let mut inner = self.0.borrow_mut();
+		let event_handler = inner
+			.event_handler
+			.take()
+			.expect("no event handler was registered");
+		inner
+			.root
+			.remove_event_listener_with_callback(
+				"click",
+				event_handler.as_ref().unchecked_ref::<js_sys::Function>(),
+			)
+			.unwrap();
 	}
 
 	fn draw(&self, mode: DrawMode<'_>) {
@@ -135,18 +164,30 @@ impl Context {
 		}
 	}
 
+	/// Tell the app to update immediately.
+	///
+	/// Do not call this function while inside the `render` closure.
+	/// Rather, register event handlers which call this function asynchronously.
+	///
+	/// As WASM is single-threaded, this will just update the app directly.
 	pub fn request_update(&self) {
 		self.build_dom();
 	}
+
+	/// Stop the app from rendering and reacting to events.
+	pub fn stop(&self) {
+		self.unregister_js_event_handlers();
+	}
 }
 
-/// This function returns after setting up the app, rather than blocking while running the UI.
-/// Subsequent updates occur through DOM event handlers.
-pub fn run<F: FnMut(DomBuilder<'_, '_>) + 'static>(root: &HtmlElement, render: F) {
+/// Set up and render the app, including responding to events.
+///
+/// This function returns after setting up the app, rather than blocking while running the UI. Subsequent updates occur through DOM event handlers.
+pub fn run<F: FnMut(DomBuilder<'_, '_>) + 'static>(root: HtmlElement, render: F) {
 	run_(root, Box::new(render));
 }
 
-fn run_(root: &HtmlElement, render: Box<dyn FnMut(DomBuilder<'_, '_>)>) {
+fn run_(root: HtmlElement, render: Box<dyn FnMut(DomBuilder<'_, '_>)>) {
 	let context = Context::new(root, render);
 	context.build_dom();
 }

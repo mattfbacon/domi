@@ -36,13 +36,15 @@ impl<'x> ElementOrId<'_, 'x> {
 	}
 }
 
+/// A helper type used to configure an element when building the DOM.
 pub struct ElementBuilder<'a, 'x> {
 	vdom: ElementOrId<'a, 'x>,
 	shared: Shared<'a>,
 }
 
 impl<'x> ElementBuilder<'_, 'x> {
-	pub fn attr(mut self, attr: impl AsRef<str>, value: impl AsRef<str>) -> Self {
+	/// Add an attribute to the element, replacing the old value if one was present.
+	pub fn attr(&mut self, attr: impl AsRef<str>, value: impl AsRef<str>) -> &mut Self {
 		if let Some(vdom) = self.vdom.as_element() {
 			let bump = vdom.children.bump();
 			vdom.attributes.insert(
@@ -53,6 +55,20 @@ impl<'x> ElementBuilder<'_, 'x> {
 		self
 	}
 
+	/// Remove an attribute from the element.
+	///
+	/// You probably shouldn't have to use this method.
+	/// Prefer conditionally adding the attribute in the first place rather than conditionally removing it later.
+	pub fn remove_attr(&mut self, attr: impl AsRef<str>) -> &mut Self {
+		if let Some(vdom) = self.vdom.as_element() {
+			vdom.attributes.remove(attr.as_ref());
+		}
+		self
+	}
+
+	/// Get a [`DomBuilder`] for the children of this element.
+	///
+	/// This method is the second part of the [`DomBuilder`]-[`ElementBuilder`] cycle.
 	pub fn children(&mut self) -> DomBuilder<'_, 'x> {
 		DomBuilder {
 			parent_id: Some(self.vdom.id()),
@@ -61,6 +77,8 @@ impl<'x> ElementBuilder<'_, 'x> {
 		}
 	}
 
+	/// Check if the element was clicked.
+	#[must_use]
 	pub fn clicked(&self) -> bool {
 		self
 			.shared
@@ -70,6 +88,7 @@ impl<'x> ElementBuilder<'_, 'x> {
 	}
 }
 
+/// The main type used to build the DOM in the `run` callback.
 pub struct DomBuilder<'a, 'x> {
 	parent_id: Option<Id>,
 	vdom: Option<&'a mut BVec<'x, VNode<'x>>>,
@@ -90,10 +109,11 @@ impl<'a, 'x> DomBuilder<'a, 'x> {
 		}
 	}
 
-	pub fn text(&mut self, text: impl AsRef<str>) {
+	/// Add a text node with the provided `content`.
+	pub fn text(&mut self, content: impl AsRef<str>) {
 		if let Some(vdom) = &mut self.vdom {
 			let bump = vdom.bump();
-			vdom.push(VNode::Text(bump.alloc_str(text.as_ref())));
+			vdom.push(VNode::Text(bump.alloc_str(content.as_ref())));
 		}
 	}
 
@@ -117,6 +137,11 @@ impl<'a, 'x> DomBuilder<'a, 'x> {
 		}
 	}
 
+	/// Add a child element of the provided `tag` and with the provided `id`.
+	///
+	/// `id` is used internally and must be unique *within the direct children of the current element*.
+	/// That is, they do not need to be globally unique, only locally unique.
+	/// See the documentation in the crate root for more information about IDs.
 	#[inline]
 	pub fn element(&mut self, id: impl Hash, tag: impl AsRef<str>) -> ElementBuilder<'_, 'x> {
 		self.element_(
@@ -127,9 +152,10 @@ impl<'a, 'x> DomBuilder<'a, 'x> {
 		)
 	}
 
+	/// Get a reference to the containing [`Context`].
 	#[inline]
 	#[must_use]
-	pub fn context(&self) -> Context {
-		self.shared.context.clone()
+	pub fn context(&self) -> &'a Context {
+		self.shared.context
 	}
 }

@@ -5,11 +5,11 @@ use bumpalo::Bump;
 use wasm_bindgen::JsCast as _;
 use web_sys::Node;
 
-pub use self::builder::DomBuilder;
+pub use self::builder::{DomBuilder, ElementBuilder};
 pub use self::patch::patch;
 use crate::event::{Id, ID_DATA_KEY};
 
-pub mod builder;
+mod builder;
 mod patch;
 
 #[derive(Debug)]
