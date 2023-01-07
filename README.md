@@ -26,7 +26,7 @@ Rather, there are two strings that are intermittently kept in sync by, at best, 
 
 I like to think that immediate mode represents the next evolution beyond that type of library. It papers over all this duplication of state and allows you to write simple, direct code, like this:
 
-```rust
+```rust, ignore
 // initial state:
 
 let mut clicked = false;
@@ -58,7 +58,7 @@ An ID can be anything that is `Hash`able, but is usually a number or a string.
 
 However, `domi` tries not to make IDs into a footgun. IDs must only be unique *between the direct children of an element*. For example, the following code is acceptable:
 
-```rust
+```rust, ignore
 let mut div1 = ui.element("div1", "div");
 div1.children().element("repeated", "div");
 
