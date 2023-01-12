@@ -7,12 +7,6 @@ impl Id {
 	pub(crate) const DATA_KEY: &str = "__domi_id";
 }
 
-impl Hash for Id {
-	fn hash<H: Hasher>(&self, hasher: &mut H) {
-		hasher.write_u64(self.0);
-	}
-}
-
 impl std::fmt::Display for Id {
 	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		self.0.fmt(formatter)
