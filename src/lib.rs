@@ -31,9 +31,10 @@ use self::event::Event;
 pub use self::vdom::{DomBuilder, ElementBuilder};
 
 mod event;
+mod id;
 #[cfg(feature = "promise")]
 pub mod promise;
-mod vdom;
+pub mod vdom;
 
 type RenderCallback = Box<dyn FnMut(DomBuilder<'_, '_>)>;
 

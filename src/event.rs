@@ -1,25 +1,6 @@
-use std::hash::Hash;
-
 use wasm_bindgen::JsCast as _;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Id(u64);
-
-impl std::fmt::Display for Id {
-	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.0.fmt(formatter)
-	}
-}
-
-impl Id {
-	pub(crate) fn new(source: impl Hash) -> Self {
-		Self(fxhash::hash64(&source))
-	}
-
-	pub(crate) fn with(self, source: impl Hash) -> Self {
-		Self(fxhash::hash64(&(self.0, source)))
-	}
-}
+use crate::id::Id;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum EventKind {
@@ -41,8 +22,6 @@ pub(crate) struct Event {
 	pub(crate) kind: EventKind,
 }
 
-pub(crate) const ID_DATA_KEY: &str = "__domi_id";
-
 impl Event {
 	pub(crate) fn from_dom(dom: &web_sys::Event) -> Option<Self> {
 		let kind = EventKind::from_dom(&dom.type_())?;
@@ -52,7 +31,7 @@ impl Event {
 			.dyn_into::<web_sys::HtmlElement>()
 			.unwrap()
 			.dataset()
-			.get(ID_DATA_KEY)?
+			.get(Id::DATA_KEY)?
 			.parse()
 			.unwrap();
 		Some(Self {

@@ -1,3 +1,5 @@
+//! Provides the virtual DOM implementation for the crate as well as builders.
+
 use std::collections::HashMap;
 
 use bumpalo::collections::Vec as BVec;
@@ -5,15 +7,15 @@ use bumpalo::Bump;
 use wasm_bindgen::JsCast as _;
 use web_sys::Node;
 
-pub use self::builder::{DomBuilder, ElementBuilder};
-pub use self::patch::patch;
-use crate::event::{Id, ID_DATA_KEY};
+pub use self::builder::{DomBuilder, ElementBuilder, StaticOrDynamic};
+pub(crate) use self::patch::patch;
+use crate::id::Id;
 
 mod builder;
 mod patch;
 
 #[derive(Debug)]
-pub struct VNodeElement<'x> {
+pub(crate) struct VNodeElement<'x> {
 	id: Id,
 	tag: &'x str,
 	attributes: HashMap<&'x str, &'x str>,
@@ -33,7 +35,7 @@ impl VNodeElement<'_> {
 
 		element
 			.dataset()
-			.set(ID_DATA_KEY, &self.id.to_string())
+			.set(Id::DATA_KEY, &self.id.to_string())
 			.unwrap();
 
 		for (attr, value) in &self.attributes {
@@ -49,7 +51,7 @@ impl VNodeElement<'_> {
 }
 
 #[derive(Debug)]
-pub enum VNode<'x> {
+pub(crate) enum VNode<'x> {
 	Text(&'x str),
 	Element(VNodeElement<'x>),
 }
@@ -169,7 +171,7 @@ mod ouroboros_impl_v_nodes_inner {
 }
 use ouroboros_impl_v_nodes_inner::{VNodesInner, VNodesInnerBuilder};
 
-pub struct VNodes(VNodesInner);
+pub(crate) struct VNodes(VNodesInner);
 
 impl Default for VNodes {
 	fn default() -> Self {
@@ -178,7 +180,7 @@ impl Default for VNodes {
 }
 
 impl VNodes {
-	pub fn with_arena(arena: Bump) -> Self {
+	pub(crate) fn with_arena(arena: Bump) -> Self {
 		let builder = VNodesInnerBuilder {
 			arena,
 			children_builder: |arena| BVec::new_in(arena),
@@ -193,15 +195,15 @@ impl VNodes {
 		Self::with_arena(arena)
 	}
 
-	pub fn clear(&mut self) {
+	pub(crate) fn clear(&mut self) {
 		*self = std::mem::take(self).clear_();
 	}
 
-	pub fn children(&self) -> &[VNode<'_>] {
+	pub(crate) fn children(&self) -> &[VNode<'_>] {
 		self.0.borrow_children()
 	}
 
-	pub fn with_children_mut<'this, R>(
+	pub(crate) fn with_children_mut<'this, R>(
 		&'this mut self,
 		f: impl for<'x> FnOnce(&'this mut BVec<'x, VNode<'x>>) -> R,
 	) -> R {

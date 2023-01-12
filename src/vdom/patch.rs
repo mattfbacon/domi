@@ -4,12 +4,20 @@ use wasm_bindgen::JsCast as _;
 use web_sys::Node;
 
 use super::VNode;
-use crate::event::ID_DATA_KEY;
+use crate::id::Id;
 
 /// Something is wrong in the DOM, probably due to tampering. It must be rebuilt entirely.
 struct MustRegenerate;
 
 fn patch_fallible(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) -> Result<(), MustRegenerate> {
+	patch_fallible_unkeyed(dom, old, new)
+}
+
+fn patch_fallible_unkeyed(
+	dom: &Node,
+	old: &[VNode<'_>],
+	new: &[VNode<'_>],
+) -> Result<(), MustRegenerate> {
 	let dom_children = dom.child_nodes();
 
 	for (i, (old, new)) in old.iter().zip(new.iter()).enumerate() {
@@ -30,7 +38,7 @@ fn patch_fallible(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) -> Result<()
 				if old.id != new.id {
 					dom_child
 						.dataset()
-						.set(ID_DATA_KEY, &new.id.to_string())
+						.set(Id::DATA_KEY, &new.id.to_string())
 						.unwrap();
 				}
 
@@ -78,7 +86,7 @@ fn patch_fallible(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) -> Result<()
 	Ok(())
 }
 
-pub fn patch(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) {
+pub(crate) fn patch(dom: &Node, old: &[VNode<'_>], new: &[VNode<'_>]) {
 	match patch_fallible(dom, old, new) {
 		Ok(()) => (),
 		Err(MustRegenerate) => {
