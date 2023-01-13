@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use bumpalo::collections::Vec as BVec;
+use wasm_bindgen::JsCast as _;
 
 use crate::event::{Event, EventKind};
 use crate::id::Id;
@@ -90,8 +91,26 @@ impl<'x> ElementBuilder<'_, 'x> {
 		self
 			.shared
 			.event
-			.filter(|event| event.target == self.vdom.id() && event.kind == EventKind::Click)
+			.filter(|event| event.target_id == self.vdom.id() && event.kind == EventKind::Click)
 			.is_some()
+	}
+
+	/// Check if the element was clicked.
+	#[must_use]
+	pub fn changed(&self) -> bool {
+		self
+			.shared
+			.event
+			.filter(|event| event.target_id == self.vdom.id() && event.kind == EventKind::Change)
+			.is_some()
+	}
+
+	/// Get the target of the event in the DOM, if an event occurred.
+	///
+	/// This method is generally only used when implementing higher-level constructs.
+	#[must_use]
+	pub fn event_target(&self) -> Option<web_sys::HtmlElement> {
+		self.shared.event.map(|event| event.target.clone())
 	}
 }
 
@@ -222,6 +241,21 @@ impl<'a, 'x> DomBuilder<'a, 'x> {
 				.map_or_else(|| Id::new(&id), |parent_id| parent_id.with(&id)),
 			tag.as_ref(),
 		)
+	}
+
+	/// Add a `<input type="text">` with the value `value`.
+	#[inline]
+	#[allow(clippy::missing_panics_doc)] // does not panic
+	pub fn text_input(&mut self, id: impl Hash, value: &mut String) -> ElementBuilder<'_, 'x> {
+		let event = self.shared.event;
+		let mut ret = self.element(id, "input");
+		ret.attr("value", &value);
+		if ret.changed() {
+			if let Some(input) = event.unwrap().target.dyn_ref::<web_sys::HtmlInputElement>() {
+				*value = input.value();
+			}
+		}
+		ret
 	}
 
 	/// Get a reference to the containing [`Context`].

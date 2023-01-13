@@ -186,6 +186,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "text-input"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "domi",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

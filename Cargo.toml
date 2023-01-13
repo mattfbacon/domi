@@ -15,6 +15,7 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 [dependencies.web-sys]
 features = [
 	"HtmlElement",
+	"HtmlInputElement",
 	"Node",
 	"NodeList",
 	"Element",
@@ -34,4 +35,4 @@ promise = ["dep:wasm-bindgen-futures"]
 bumpalo = { git = "https://github.com/mattfbacon/bumpalo" }
 
 [workspace]
-members = [".", "examples/counter", "examples/http"]
+members = [".", "examples/counter", "examples/http", "examples/text-input"]

@@ -29,6 +29,7 @@ use web_sys::HtmlElement;
 
 use self::event::Event;
 pub use self::vdom::{DomBuilder, ElementBuilder};
+use crate::event::HANDLED_EVENTS;
 
 mod event;
 mod id;
@@ -119,10 +120,12 @@ impl Context {
 		let event_handler_js = event_handler.as_ref().unchecked_ref::<js_sys::Function>();
 
 		let mut inner = self.0.borrow_mut();
-		inner
-			.root
-			.add_event_listener_with_callback("click", event_handler_js)
-			.unwrap();
+		for (name, _) in HANDLED_EVENTS {
+			inner
+				.root
+				.add_event_listener_with_callback(name, event_handler_js)
+				.unwrap();
+		}
 		let replaced = inner.event_handler.replace(event_handler);
 		debug_assert!(
 			replaced.is_none(),
@@ -136,13 +139,13 @@ impl Context {
 			.event_handler
 			.take()
 			.expect("no event handler was registered");
-		inner
-			.root
-			.remove_event_listener_with_callback(
-				"click",
-				event_handler.as_ref().unchecked_ref::<js_sys::Function>(),
-			)
-			.unwrap();
+		let event_handler = event_handler.as_ref().unchecked_ref::<js_sys::Function>();
+		for (name, _) in HANDLED_EVENTS {
+			inner
+				.root
+				.remove_event_listener_with_callback(name, event_handler)
+				.unwrap();
+		}
 	}
 
 	fn draw(&self, mode: DrawMode<'_>) {

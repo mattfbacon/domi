@@ -1,0 +1,13 @@
+[package]
+edition = "2021"
+name = "text-input"
+version = "0.1.0"
+
+[dependencies]
+console_error_panic_hook = "0.1"
+domi = { path = "../.." }
+wasm-bindgen = "0.2"
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window", "Document", "Element"]

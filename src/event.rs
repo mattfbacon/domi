@@ -2,23 +2,29 @@ use wasm_bindgen::JsCast as _;
 
 use crate::id::Id;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EventKind {
 	Click,
+	Change,
 }
+
+pub(crate) const HANDLED_EVENTS: &[(&str, EventKind)] =
+	&[("click", EventKind::Click), ("change", EventKind::Change)];
 
 impl EventKind {
 	fn from_dom(dom: &str) -> Option<Self> {
-		match dom {
-			"click" => Some(Self::Click),
-			_ => None,
-		}
+		HANDLED_EVENTS
+			.iter()
+			.copied()
+			.find(|&(name, _)| dom == name)
+			.map(|(_, val)| val)
 	}
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Event {
-	pub(crate) target: Id,
+	pub(crate) target: web_sys::HtmlElement,
+	pub(crate) target_id: Id,
 	pub(crate) kind: EventKind,
 }
 
@@ -29,13 +35,11 @@ impl Event {
 			.target()
 			.unwrap()
 			.dyn_into::<web_sys::HtmlElement>()
-			.unwrap()
-			.dataset()
-			.get(Id::DATA_KEY)?
-			.parse()
 			.unwrap();
+		let target_id = target.dataset().get(Id::DATA_KEY)?.parse().unwrap();
 		Some(Self {
-			target: Id(target),
+			target,
+			target_id: Id(target_id),
 			kind,
 		})
 	}
