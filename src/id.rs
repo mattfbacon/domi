@@ -13,13 +13,19 @@ impl std::fmt::Display for Id {
 	}
 }
 
+fn hash(source: &impl Hash) -> u64 {
+	let mut hasher = rustc_hash::FxHasher::default();
+	source.hash(&mut hasher);
+	hasher.finish()
+}
+
 impl Id {
 	pub(crate) fn new(source: impl Hash) -> Self {
-		Self(fxhash::hash64(&source))
+		Self(hash(&source))
 	}
 
 	pub(crate) fn with(self, source: impl Hash) -> Self {
-		Self(fxhash::hash64(&(self.0, source)))
+		Self(hash(&(self.0, source)))
 	}
 }
 
